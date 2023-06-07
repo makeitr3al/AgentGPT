@@ -790,13 +790,13 @@ flake8 = ">5"
 
 [[package]]
 name = "flake8-bugbear"
-version = "23.5.9"
+version = "23.6.5"
 description = "A plugin for flake8 finding likely bugs and design problems in your program. Contains warnings that don't belong in pyflakes and pycodestyle."
 optional = false
 python-versions = ">=3.8.1"
 files = [
-    {file = "flake8-bugbear-23.5.9.tar.gz", hash = "sha256:695c84a5d7da54eb35d79a7354dbaf3aaba80de32250608868aa1c85534b2a86"},
-    {file = "flake8_bugbear-23.5.9-py3-none-any.whl", hash = "sha256:631fa927fbc799e8ca636b849dd7dfc304812287137b6ecb3277821f028bee40"},
+    {file = "flake8-bugbear-23.6.5.tar.gz", hash = "sha256:8631e1071c9d85d24a615f235565c16c9a2ac57add4a14636d331bf9f4ef14fa"},
+    {file = "flake8_bugbear-23.6.5-py3-none-any.whl", hash = "sha256:1d9eae6d262a3823765f4579cdab169963d1d2288b02f0f5c6e829b03dded509"},
 ]
 
 [package.dependencies]
@@ -1334,24 +1334,24 @@ crc32c = ["crc32c"]
 
 [[package]]
 name = "lanarky"
-version = "0.7.6"
+version = "0.7.8"
 description = "Ship production-ready LLM projects with FastAPI"
 optional = false
 python-versions = ">=3.9,<4.0"
 files = [
-    {file = "lanarky-0.7.6-py3-none-any.whl", hash = "sha256:00141bb92ca8d95a7f6e7dc60d209c46b268ef93540a9af6bb7b67fc0dcbe3b2"},
-    {file = "lanarky-0.7.6.tar.gz", hash = "sha256:ee4e6a0d1e3e15bb7f66861414897b1304d2f5458205a3b1d15eed4984d919c3"},
+    {file = "lanarky-0.7.8-py3-none-any.whl", hash = "sha256:5cfa6de5ea458390e941b755285436eb341f69fd986b1bfca7cf4cf9d3b531b3"},
+    {file = "lanarky-0.7.8.tar.gz", hash = "sha256:adb9ec2a4dcb73064dbc646c3aaa5b80c65c5530659da5d551995e774b448ab8"},
 ]
 
 [package.dependencies]
-fastapi = ">=0.95.2"
-langchain = ">=0.0.183"
+fastapi = ">=0.96.0"
+langchain = ">=0.0.189"
 python-dotenv = ">=1.0.0,<2.0.0"
 typing-extensions = "4.5.0"
 urllib3 = "<=1.26.15"
 
 [package.extras]
-gptcache = ["gptcache (>=0.1.28,<0.2.0)"]
+gptcache = ["gptcache (>=0.1.29.1,<0.2.0.0)"]
 openai = ["openai (>=0.27.7,<0.28.0)", "tiktoken (>=0.4.0,<0.5.0)"]
 redis = ["redis (>=4.5.5,<5.0.0)"]
 
@@ -3198,4 +3198,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "f413544fdd6396401c47a5cee6053e147f8264c28f711ee454ec89985cb80100"
+content-hash = "632102aa2fe03a33acf52d8ee6fcd274b6cbb9b7f00b5b50447f5e3ca4aed842"

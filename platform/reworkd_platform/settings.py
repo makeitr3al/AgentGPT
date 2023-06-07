@@ -48,7 +48,6 @@ class Settings(BaseSettings):
     secondary_openai_api_key: Optional[str] = None
 
     replicate_api_key: Optional[str] = None
-    ff_mock_mode_enabled: bool = False  # Controls whether calls are mocked
     serp_api_key: Optional[str] = None
 
     # Frontend URL for CORS
@@ -64,14 +63,18 @@ class Settings(BaseSettings):
     db_ca_path: str = "/etc/ssl/cert.pem"
 
     # Variables for the vector db. We're currently using Weaviate
-    vector_db_url: str = "<Should be updated via env>"
-    vector_db_api_ket: str = "<Should be updated via env>"
+    vector_db_url: Optional[str] = None
+    vector_db_api_key: Optional[str] = None
 
     # Sentry's configuration.
     sentry_dsn: Optional[str] = None
     sentry_sample_rate: float = 1.0
 
     kafka_bootstrap_servers: List[str] = ["reworkd_platform-kafka:9092"]
+
+    # Application Settings
+    ff_mock_mode_enabled: bool = False  # Controls whether calls are mocked
+    max_loops: int = 25  # Maximum number of loops to run
 
     @property
     def db_url(self) -> URL:
