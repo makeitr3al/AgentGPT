@@ -1,13 +1,15 @@
 import { z } from "zod";
 import { useSession } from "next-auth/react";
-import { env } from "../env/client.mjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAgentStore } from "../stores";
+
+import { get } from "../services/fetch-utils";
 
 const Tool = z.object({
   name: z.string(),
   description: z.string(),
   color: z.string(),
+  image_url: z.string().optional(),
 });
 
 const ToolsResponseSchema = z.object({
@@ -20,18 +22,8 @@ const ActiveToolSchema = Tool.extend({
 
 export type ActiveTool = z.infer<typeof ActiveToolSchema>;
 
-const fetchAPI = async <T extends z.ZodTypeAny>(path: string, schema: T): Promise<z.infer<T>> => {
-  const response = await fetch(`${env.NEXT_PUBLIC_BACKEND_URL}${path}`);
-  if (!response.ok) {
-    throw new Error("Request failed");
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-  return schema.parse(await response.json());
-};
-
 const loadTools = async (key: string) => {
-  const allTools = await fetchAPI("/api/agent/tools", ToolsResponseSchema);
+  const allTools = await get("/api/agent/tools", ToolsResponseSchema);
 
   const data = localStorage.getItem(key);
   let activeTools: ActiveTool[] = [];

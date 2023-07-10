@@ -6,10 +6,10 @@ type TextStream = ReadableStreamDefaultReader<Uint8Array>;
 const fetchData = async (
   url: string,
   body: RequestBody,
-  accessToken: string,
-  onError: (message: unknown) => void
+  accessToken: string
 ): Promise<TextStream | undefined> => {
   url = env.NEXT_PUBLIC_BACKEND_URL + url;
+
   const response = await fetch(url, {
     method: "POST",
     cache: "no-cache",
@@ -23,9 +23,8 @@ const fetchData = async (
   });
 
   if (response.status === 409) {
-    // TODO: Return the entire object
     const error = (await response.json()) as { error: string; detail: string };
-    onError(error.detail);
+    throw new Error(error.detail);
   }
 
   return response.body?.getReader();
@@ -40,23 +39,18 @@ async function processStream(
   reader: TextStream,
   onStart: () => void,
   onText: (text: string) => void,
-  onError: (error: unknown) => void,
   shouldClose: () => boolean
 ): Promise<void> {
-  try {
-    onStart();
-    while (true) {
-      if (shouldClose()) {
-        await reader.cancel();
-        return;
-      }
-
-      const text = await readStream(reader);
-      if (text === null) break;
-      onText(text);
+  onStart();
+  while (true) {
+    if (shouldClose()) {
+      await reader.cancel();
+      return;
     }
-  } catch (error) {
-    onError(error);
+
+    const text = await readStream(reader);
+    if (text === null) break;
+    onText(text);
   }
 }
 
@@ -66,14 +60,13 @@ export const streamText = async (
   accessToken: string,
   onStart: () => void,
   onText: (text: string) => void,
-  onError: (error: unknown) => void,
   shouldClose: () => boolean
 ) => {
-  const reader = await fetchData(url, body, accessToken, onError);
+  const reader = await fetchData(url, body, accessToken);
   if (!reader) {
     console.error("Reader is undefined!");
     return;
   }
 
-  await processStream(reader, onStart, onText, onError, shouldClose);
+  await processStream(reader, onStart, onText, shouldClose);
 };

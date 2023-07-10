@@ -1,362 +1,297 @@
 import React, { useEffect, useRef } from "react";
 import { useTranslation } from "next-i18next";
 import { type GetStaticProps, type NextPage } from "next";
-import Badge from "../components/Badge";
-import DefaultLayout from "../layout/default";
-import ChatWindow from "../components/console/ChatWindow";
-import Drawer from "../components/drawer/Drawer";
-import Input from "../components/Input";
 import Button from "../components/Button";
-import { FaCog, FaPlay, FaRobot, FaStar } from "react-icons/fa";
-import PopIn from "../components/motions/popin";
-import { VscLoading } from "react-icons/vsc";
+import { FaCog, FaRobot, FaStar } from "react-icons/fa";
 import AutonomousAgent from "../services/agent/autonomous-agent";
-import Expand from "../components/motions/expand";
 import HelpDialog from "../components/dialog/HelpDialog";
-import { SettingsDialog } from "../components/dialog/SettingsDialog";
-import { TaskWindow } from "../components/TaskWindow";
 import { useAuth } from "../hooks/useAuth";
-import type { AgentPlaybackControl, Message } from "../types/agentTypes";
-import { AGENT_PLAY, isTask } from "../types/agentTypes";
 import { useAgent } from "../hooks/useAgent";
 import { isEmptyOrBlank } from "../utils/whitespace";
-import { resetAllMessageSlices, useAgentStore, useMessageStore } from "../stores";
+import {
+  resetAllAgentSlices,
+  resetAllMessageSlices,
+  useAgentStore,
+  useMessageStore,
+} from "../stores";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import { useSettings } from "../hooks/useSettings";
-import { findLanguage, languages } from "../utils/languages";
+import { languages } from "../utils/languages";
 import nextI18NextConfig from "../../next-i18next.config.js";
 import { SignInDialog } from "../components/dialog/SignInDialog";
 import { ToolsDialog } from "../components/dialog/ToolsDialog";
+import DashboardLayout from "../layout/dashboard";
+import AppTitle from "../components/AppTitle";
+import FadeIn from "../components/motions/FadeIn";
+import Input from "../components/Input";
+import Expand from "../components/motions/expand";
+import ChatWindow from "../components/console/ChatWindow";
+import { AnimatePresence, motion } from "framer-motion";
+import { useSettings } from "../hooks/useSettings";
+import { useRouter } from "next/router";
+import { useAgentInputStore } from "../stores/agentInputStore";
+import { MessageService } from "../services/agent/message-service";
+import { DefaultAgentRunModel } from "../services/agent/agent-run-model";
+import { resetAllTaskSlices, useTaskStore } from "../stores/taskStore";
+import { ChatWindowTitle } from "../components/console/ChatWindowTitle";
+import { AgentApi } from "../services/agent/agent-api";
+import { toApiModelSettings } from "../utils/interfaces";
+import ExampleAgents from "../components/console/ExampleAgents";
+import Summarize from "../components/console/SummarizeButton";
+import AgentControls from "../components/console/AgentControls";
+import { ChatMessage } from "../components/console/ChatMessage";
+import clsx from "clsx";
 
 const Home: NextPage = () => {
-  const { i18n } = useTranslation();
-  // Zustand states with state dependencies
+  const { t } = useTranslation("indexPage");
   const addMessage = useMessageStore.use.addMessage();
   const messages = useMessageStore.use.messages();
-  const updateTaskStatus = useMessageStore.use.updateTaskStatus();
+  const tasks = useTaskStore.use.tasks();
+  const { query } = useRouter();
 
   const setAgent = useAgentStore.use.setAgent();
-  const isAgentStopped = useAgentStore.use.isAgentStopped();
-  const isAgentPaused = useAgentStore.use.isAgentPaused();
-  const updateIsAgentPaused = useAgentStore.use.updateIsAgentPaused();
-  const updateIsAgentStopped = useAgentStore.use.updateIsAgentStopped();
-  const agentMode = useAgentStore.use.agentMode();
+  const agentLifecycle = useAgentStore.use.lifecycle();
+
   const agent = useAgentStore.use.agent();
 
+  const fullscreen = agent !== null;
   const { session, status } = useAuth();
-  const [nameInput, setNameInput] = React.useState<string>("");
-  const [goalInput, setGoalInput] = React.useState<string>("");
-  const [mobileVisibleWindow, setMobileVisibleWindow] = React.useState<"Chat" | "Tasks">("Chat");
-  const settingsModel = useSettings();
+  const nameInput = useAgentInputStore.use.nameInput();
+  const setNameInput = useAgentInputStore.use.setNameInput();
+  const goalInput = useAgentInputStore.use.goalInput();
+  const setGoalInput = useAgentInputStore.use.setGoalInput();
+  const [chatInput, setChatInput] = React.useState("");
+  const { settings } = useSettings();
 
-  const [showHelpDialog, setShowHelpDialog] = React.useState(false);
-  const [showSettingsDialog, setShowSettingsDialog] = React.useState(false);
   const [showSignInDialog, setShowSignInDialog] = React.useState(false);
   const [showToolsDialog, setShowToolsDialog] = React.useState(false);
-  const [hasSaved, setHasSaved] = React.useState(false);
   const agentUtils = useAgent();
-
-  useEffect(() => {
-    const key = "agentgpt-modal-opened-v0.2";
-    const savedModalData = localStorage.getItem(key);
-
-    setTimeout(() => {
-      if(savedModalData == null) {
-        setShowHelpDialog(true);
-      }
-    }, 1800);
-
-    localStorage.setItem(key, JSON.stringify(true));
-  }, []);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     nameInputRef?.current?.focus();
   }, []);
 
-  useEffect(() => {
-    updateIsAgentStopped();
-  }, [agent, updateIsAgentStopped]);
-
   const setAgentRun = (newName: string, newGoal: string) => {
-    if(agent != null) {
-      return;
-    }
-
     setNameInput(newName);
     setGoalInput(newGoal);
-    handleNewGoal(newName, newGoal);
+    handlePlay(newName, newGoal);
   };
 
-  const handleAddMessage = (message: Message) => {
-    if(isTask(message)) {
-      updateTaskStatus(message);
-    }
+  const disableStartAgent =
+    (agent !== null && !["paused", "stopped"].includes(agentLifecycle)) ||
+    isEmptyOrBlank(nameInput) ||
+    isEmptyOrBlank(goalInput);
 
-    addMessage(message);
+  const handlePlay = (name: string, goal: string) => {
+    if (agentLifecycle === "stopped") handleRestart();
+    else if (name.trim() === "" || goal.trim() === "") return;
+    else handleNewAgent(name.trim(), goal.trim());
   };
 
-  const handlePause = (opts: { agentPlaybackControl?: AgentPlaybackControl }) => {
-    if(opts.agentPlaybackControl !== undefined) {
-      updateIsAgentPaused(opts.agentPlaybackControl);
-    }
-  };
-
-  const disableDeployAgent =
-    agent != null || isEmptyOrBlank(nameInput) || isEmptyOrBlank(goalInput);
-
-  const handleNewGoal = (name: string, goal: string) => {
-    if(name.trim() === "" || goal.trim() === "") {
-      return;
-    }
-
-    // Do not force login locally for people that don't have auth setup
-    if(session === null) {
+  const handleNewAgent = (name: string, goal: string) => {
+    if (session === null) {
+      storeAgentDataInLocalStorage(name, goal);
       setShowSignInDialog(true);
       return;
     }
 
-    const newAgent = new AutonomousAgent(
-      name.trim(),
-      goal.trim(),
-      handleAddMessage,
-      handlePause,
-      () => setAgent(null),
-      {
-        language: findLanguage(i18n.language).name,
-        ...settingsModel.settings,
-      },
-      agentMode,
-      session ?? undefined
-    );
-    setAgent(newAgent);
-    setHasSaved(false);
-    resetAllMessageSlices();
-    newAgent?.run().then(console.log).catch(console.error);
-  };
-
-  const handleContinue = () => {
-    if(!agent) {
+    if (agent && agentLifecycle == "paused") {
+      agent?.run().catch(console.error);
       return;
     }
 
-    agent.updatePlayBackControl(AGENT_PLAY);
-    updateIsAgentPaused(agent.playbackControl);
-    agent.updateIsRunning(true);
-    agent.run().then(console.log).catch(console.error);
+    const model = new DefaultAgentRunModel(name.trim(), goal.trim());
+    const messageService = new MessageService(addMessage);
+    const agentApi = new AgentApi({
+      model_settings: toApiModelSettings(settings, session),
+      name: name,
+      goal: goal,
+      session,
+      agentUtils: agentUtils,
+    });
+    const newAgent = new AutonomousAgent(
+      model,
+      messageService,
+      settings,
+      agentApi,
+      session ?? undefined
+    );
+    setAgent(newAgent);
+    newAgent?.run().then(console.log).catch(console.error);
+  };
+
+  const storeAgentDataInLocalStorage = (name: string, goal: string) => {
+    const agentData = { name, goal };
+    localStorage.setItem("agentData", JSON.stringify(agentData));
+  };
+
+  const getAgentDataFromLocalStorage = () => {
+    const agentData = localStorage.getItem("agentData");
+    return agentData ? (JSON.parse(agentData) as { name: string; goal: string }) : null;
+  };
+
+  useEffect(() => {
+    if (session !== null) {
+      const agentData = getAgentDataFromLocalStorage();
+
+      if (agentData) {
+        setNameInput(agentData.name);
+        setGoalInput(agentData.goal);
+        localStorage.removeItem("agentData");
+      }
+    }
+  }, [session]);
+
+  const handleRestart = () => {
+    resetAllMessageSlices();
+    resetAllTaskSlices();
+    resetAllAgentSlices();
   };
 
   const handleKeyPress = (
     e: React.KeyboardEvent<HTMLInputElement> | React.KeyboardEvent<HTMLTextAreaElement>
   ) => {
     // Only Enter is pressed, execute the function
-    if(e.key === "Enter" && !disableDeployAgent && !e.shiftKey) {
-      if(isAgentPaused) {
-        handleContinue();
-      }
-      handleNewGoal(nameInput, goalInput);
+    if (e.key === "Enter" && !disableStartAgent && !e.shiftKey) {
+      handlePlay(nameInput, goalInput);
     }
   };
 
-  const handleStopAgent = () => {
-    agent?.stopAgent();
-    updateIsAgentStopped();
-  };
-
-  const handleVisibleWindowClick = (visibleWindow: "Chat" | "Tasks") => {
-    // This controls whether the ChatWindow or TaskWindow is visible on mobile
-    setMobileVisibleWindow(visibleWindow);
-  };
-
-  const shouldShowSave =
-    status === "authenticated" && isAgentStopped && messages.length && !hasSaved;
-
-  const firstButton =
-    isAgentPaused && !isAgentStopped ? (
-      <Button ping disabled={!isAgentPaused} onClick={handleContinue}>
-        <FaPlay size={20}/>
-        <span className="ml-2">{i18n.t("CONTINUE", { ns: "common" })}</span>
-      </Button>
-    ) : (
-      <Button
-        ping={!disableDeployAgent}
-        disabled={disableDeployAgent}
-        onClick={() => handleNewGoal(nameInput, goalInput)}
-      >
-        {agent == null ? (
-          i18n.t("BUTTON_DEPLOY_AGENT", { ns: "indexPage" })
-        ) : (
-          <>
-            <VscLoading className="animate-spin" size={20}/>
-            <span className="ml-2">{i18n.t("RUNNING", { ns: "common" })}</span>
-          </>
-        )}
-      </Button>
-    );
-
   return (
-    <DefaultLayout>
-      <HelpDialog show={showHelpDialog} close={() => setShowHelpDialog(false)}/>
-      <ToolsDialog show={showToolsDialog} close={() => setShowToolsDialog(false)}/>
-      <SettingsDialog
-        customSettings={settingsModel}
-        show={showSettingsDialog}
-        close={() => setShowSettingsDialog(false)}
-      />
-      <SignInDialog show={showSignInDialog} close={() => setShowSignInDialog(false)}/>
-      <main className="flex min-h-screen flex-row">
-        <Drawer
-          showHelp={() => setShowHelpDialog(true)}
-          showSettings={() => setShowSettingsDialog(true)}
-        />
+    <DashboardLayout>
+      <HelpDialog />
+      <ToolsDialog show={showToolsDialog} close={() => setShowToolsDialog(false)} />
+
+      <SignInDialog show={showSignInDialog} close={() => setShowSignInDialog(false)} />
+      <div id="content" className="flex min-h-screen w-full items-center justify-center">
         <div
-          id="content"
-          className="z-10 flex min-h-screen w-full items-center justify-center p-2 sm:px-4 md:px-10"
+          id="layout"
+          className={clsx(
+            "flex h-screen w-full max-w-screen-xl flex-col items-center gap-1 p-2 pt-10 sm:gap-3 sm:p-4",
+            agent !== null ? "pt-11" : "pt-3"
+          )}
         >
-          <div
-            id="layout"
-            className="flex h-full w-full max-w-screen-xl flex-col items-center justify-between gap-1 py-2 sm:gap-3 sm:py-5 md:justify-center"
-          >
-            <div id="title" className="relative flex flex-col items-center font-mono">
-              <div className="flex flex-row items-start shadow-2xl">
-                <span className="text-4xl font-bold text-[#C0C0C0] xs:text-5xl sm:text-6xl">
-                  Agent
-                </span>
-                <span className="text-4xl font-bold text-white xs:text-5xl sm:text-6xl">GPT</span>
-                <PopIn delay={0.5}>
-                  <Badge colorClass="bg-gradient-to-t from-sky-500 to-sky-600 border-2 border-white/20">
-                    {`${i18n?.t("BETA", {
-                      ns: "indexPage",
-                    })}`}{" "}
-                    🚀
-                  </Badge>
-                </PopIn>
-              </div>
-              <div className="mt-1 text-center font-mono text-[0.7em] font-bold text-white">
-                <p>
-                  {i18n.t("HEADING_DESCRIPTION", {
-                    ns: "indexPage",
-                  })}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <Button
-                className="rounded-r-none py-0 text-sm sm:py-[0.25em] xl:hidden"
-                disabled={mobileVisibleWindow == "Chat"}
-                onClick={() => handleVisibleWindowClick("Chat")}
-              >
-                Chat
-              </Button>
-              <Button
-                className="rounded-l-none py-0 text-sm sm:py-[0.25em] xl:hidden"
-                disabled={mobileVisibleWindow == "Tasks"}
-                onClick={() => handleVisibleWindowClick("Tasks")}
-              >
-                Tasks
-              </Button>
-            </div>
-            <Expand className="flex w-full flex-row">
-              <ChatWindow
-                messages={messages}
-                title="AgentGPT"
-                onSave={
-                  shouldShowSave
-                    ? (format) => {
-                      setHasSaved(true);
-                      agentUtils.saveAgent({
-                        goal: goalInput.trim(),
-                        name: nameInput.trim(),
-                        tasks: messages,
-                      });
+          {
+            <AnimatePresence>
+              {!fullscreen && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "fit-content" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.5, type: "easeInOut" }}
+                >
+                  <AppTitle />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          }
+          <Expand className="flex w-full flex-grow overflow-hidden">
+            <ChatWindow
+              messages={messages}
+              title={<ChatWindowTitle model={settings.customModelName} />}
+              chatControls={
+                agent
+                  ? {
+                      value: chatInput,
+                      onChange: (value: string) => {
+                        setChatInput(value);
+                      },
+                      handleChat: async () => {
+                        const currentInput = chatInput;
+                        setChatInput("");
+                        await agent?.chat(currentInput);
+                      },
+                      loading: tasks.length == 0 || chatInput === "",
                     }
-                    : undefined
-                }
-                scrollToBottom
-                displaySettings
-                setAgentRun={setAgentRun}
-                visibleOnMobile={mobileVisibleWindow === "Chat"}
-              />
-              <TaskWindow visibleOnMobile={mobileVisibleWindow === "Tasks"}/>
-            </Expand>
+                  : undefined
+              }
+            >
+              {messages.length === 0 && <ExampleAgents setAgentRun={setAgentRun} />}
+              {messages.map((message, index) => {
+                return (
+                  <FadeIn key={`${index}-${message.type}`}>
+                    <ChatMessage message={message} />
+                  </FadeIn>
+                );
+              })}
+              <Summarize />
+            </ChatWindow>
+          </Expand>
 
-            <div className="flex w-full flex-col gap-2 md:m-4">
-              <Expand delay={1.2} className="flex flex-row items-end gap-2 md:items-center">
-                <Input
-                  inputRef={nameInputRef}
-                  left={
-                    <>
-                      <FaRobot/>
-                      <span className="ml-2">{`${i18n?.t("AGENT_NAME", {
-                        ns: "indexPage",
-                      })}`}</span>
-                    </>
-                  }
-                  value={nameInput}
-                  disabled={agent != null}
-                  onChange={(e) => setNameInput(e.target.value)}
-                  onKeyDown={(e) => handleKeyPress(e)}
-                  placeholder="AgentGPT"
-                  type="text"
-                />
-                <Button ping onClick={() => setShowToolsDialog(true)} className="h-fit">
-                  <p className="mr-3">Tools</p>
-                  <FaCog/>
-                </Button>
-              </Expand>
-              <Expand delay={1.3}>
-                <Input
-                  left={
-                    <>
-                      <FaStar/>
-                      <span className="ml-2">{`${i18n?.t("LABEL_AGENT_GOAL", {
-                        ns: "indexPage",
-                      })}`}</span>
-                    </>
-                  }
-                  disabled={agent != null}
-                  value={goalInput}
-                  onChange={(e) => setGoalInput(e.target.value)}
-                  onKeyDown={(e) => handleKeyPress(e)}
-                  placeholder={`${i18n?.t("PLACEHOLDER_AGENT_GOAL", {
-                    ns: "indexPage",
-                  })}`}
-                  type="textarea"
-                />
-              </Expand>
-            </div>
-            <Expand delay={1.4} className="flex gap-2">
-              {firstButton}
-              <Button
-                disabled={agent === null}
-                onClick={handleStopAgent}
-                enabledClassName={"bg-red-600 hover:bg-red-400"}
-              >
-                {!isAgentStopped && agent === null ? (
-                  <>
-                    <VscLoading className="animate-spin" size={20}/>
-                    <span className="ml-2">{`${i18n?.t("BUTTON_STOPPING", {
-                      ns: "indexPage",
-                    })}`}</span>
-                  </>
-                ) : (
-                  `${i18n?.t("BUTTON_STOP_AGENT", "BUTTON_STOP_AGENT", {
-                    ns: "indexPage",
-                  })}`
-                )}
-              </Button>
-            </Expand>
-          </div>
+          <FadeIn
+            delay={0}
+            initialY={30}
+            duration={1}
+            className="flex w-full flex-col items-center gap-2"
+          >
+            <AnimatePresence>
+              {!fullscreen && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "fit-content" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.5, type: "easeInOut" }}
+                  className="flex w-full flex-col gap-2"
+                >
+                  <div className="flex w-full flex-row items-end gap-2 md:items-center">
+                    <Input
+                      inputRef={nameInputRef}
+                      left={
+                        <>
+                          <FaRobot />
+                          <span className="ml-2">{`${t("AGENT_NAME")}`}</span>
+                        </>
+                      }
+                      value={nameInput}
+                      disabled={agent != null}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      onKeyDown={(e) => handleKeyPress(e)}
+                      placeholder="AgentGPT"
+                      type="text"
+                    />
+                    <Button
+                      ping
+                      onClick={() => setShowToolsDialog(true)}
+                      className="border-white/20 bg-gradient-to-t from-sky-500 to-sky-600 transition-all hover:bg-gradient-to-t hover:from-sky-400 hover:to-sky-600"
+                    >
+                      <p className="mr-3">Tools</p>
+                      <FaCog />
+                    </Button>
+                  </div>
+                  <Input
+                    left={
+                      <>
+                        <FaStar />
+                        <span className="ml-2">{`${t("LABEL_AGENT_GOAL")}`}</span>
+                      </>
+                    }
+                    disabled={agent != null}
+                    value={goalInput}
+                    onChange={(e) => setGoalInput(e.target.value)}
+                    onKeyDown={(e) => handleKeyPress(e)}
+                    placeholder={`${t("PLACEHOLDER_AGENT_GOAL")}`}
+                    type="textarea"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AgentControls
+              disablePlay={disableStartAgent}
+              lifecycle={agentLifecycle}
+              handlePlay={() => handlePlay(nameInput, goalInput)}
+              handlePause={() => agent?.pauseAgent()}
+              handleStop={() => agent?.stopAgent()}
+            />
+          </FadeIn>
         </div>
-      </main>
-    </DefaultLayout>
+      </div>
+    </DashboardLayout>
   );
 };
 
 export default Home;
 
-export const getStaticProps: GetStaticProps = async({ locale = "en" }) => {
+export const getStaticProps: GetStaticProps = async ({ locale = "en" }) => {
   const supportedLocales = languages.map((language) => language.code);
   const chosenLocale = supportedLocales.includes(locale) ? locale : "en";
 

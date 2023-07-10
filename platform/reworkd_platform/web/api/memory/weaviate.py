@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Dict, cast, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
 import weaviate
@@ -10,10 +10,10 @@ from loguru import logger
 from weaviate import UnexpectedStatusCodeException
 
 from reworkd_platform.settings import settings
-from reworkd_platform.web.api.memory.memory import SimilarTasks, AgentMemory
+from reworkd_platform.web.api.memory.memory import AgentMemory
 
 
-def _default_schema(index_name: str, text_key: str) -> Dict:
+def _default_schema(index_name: str, text_key: str) -> Dict[str, Any]:
     return {
         "class": index_name,
         "properties": [
@@ -33,7 +33,7 @@ class WeaviateMemory(AgentMemory):
     Wrapper around the Weaviate vector database
     """
 
-    db: Weaviate = None
+    db: Optional[Weaviate] = None
 
     def __init__(self, index_name: str):
         self.index_name = CLASS_PREFIX + index_name
@@ -52,7 +52,11 @@ class WeaviateMemory(AgentMemory):
         self._create_class()
 
         # Instantiate client with embedding provider
-        self.embeddings = OpenAIEmbeddings(openai_api_key=settings.openai_api_key)
+        self.embeddings = OpenAIEmbeddings(
+            client=None,  # Meta private value but mypy will complain its missing
+            openai_api_key=settings.openai_api_key,
+        )
+
         self.db = Weaviate(
             self.client,
             self.index_name,
@@ -63,21 +67,21 @@ class WeaviateMemory(AgentMemory):
 
         return self
 
-    def _create_class(self):
+    def _create_class(self) -> None:
         # Create the schema if it doesn't already exist
         schema = _default_schema(self.index_name, self.text_key)
         if not self.client.schema.contains(schema):
             self.client.schema.create_class(schema)
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
         self.client.__del__()
 
     def add_tasks(self, tasks: List[str]) -> List[str]:
+        if self.db is None:
+            raise Exception("WeaviateMemory not initialized")
         return self.db.add_texts(tasks)
 
-    def get_similar_tasks(
-        self, query: str, score_threshold: float = 0.7
-    ) -> SimilarTasks:
+    def get_similar_tasks(self, query: str, score_threshold: float = 0.98) -> List[str]:
         # Get similar tasks
         results = self._similarity_search_with_score(query)
 
@@ -87,7 +91,7 @@ class WeaviateMemory(AgentMemory):
         results.sort(key=get_score, reverse=True)
 
         # Return formatted response
-        return [(text, score) for [text, score] in results if score >= score_threshold]
+        return [text for [text, score] in results if score >= score_threshold]
 
     def reset_class(self) -> None:
         try:
